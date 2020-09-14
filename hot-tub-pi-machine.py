@@ -9,8 +9,9 @@ import hug
 from falcon import HTTP_400
 from gpiozero import OutputDevice
 
-# Path to probe device
+# Global constants
 PROBE_PATH = glob('/sys/bus/w1/devices/28*/temperature')[0]
+DEFAULT_GOAL_TEMP = 90
 
 # Add CORS middleware
 api = hug.API(__name__)
@@ -29,7 +30,7 @@ def is_float(string):
 class HotTub:
     def __init__(self):
         self.current_temp = 0
-        self.goal_temp = 0
+        self.goal_temp = DEFAULT_GOAL_TEMP
         self.jets_active = False
         self.heater_active = False
         self.heater = OutputDevice(17)
@@ -65,17 +66,18 @@ class HotTub:
         return self.get_jets_active()
 
     def read_temp(self):
+        def convert_to_fahrenheit(temp):
+            return (temp * 9/5) + 32
+
         # Update temperature in loop
         while True:
-            def convert_to_fahrenheit(temp):
-                return (temp * 9/5) + 32
-
             with open(PROBE_PATH) as f:
                 raw_temp = f.read().rstrip()
 
-            # Split string into float
-            celsius = float('.'.join((raw_temp[:2], raw_temp[2:])))
-            self.current_temp = convert_to_fahrenheit(celsius)
+            if raw_temp:
+                # Split string into float
+                celsius = float('.'.join((raw_temp[:2], raw_temp[2:])))
+                self.current_temp = convert_to_fahrenheit(celsius)
 
     def toggle_heater(self, enabled):
         self.heater_active = enabled
@@ -86,10 +88,6 @@ class HotTub:
 
     def manage_temp(self):
         while True:
-            print(f'current_temp: {self.current_temp}')
-            print(f'goal_temp: {self.goal_temp}')
-            print(f'heater_active: {self.heater_active}')
-            print()
             if self.current_temp < self.goal_temp:
                 if not self.heater_active:
                     self.toggle_heater(True)
