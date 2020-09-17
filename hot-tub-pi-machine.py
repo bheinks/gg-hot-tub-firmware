@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
-from signal import signal, SIGTERM
 from glob import glob
+from signal import signal, SIGTERM
+from sys import exit
 from threading import Thread
 from time import sleep
 
@@ -31,6 +32,7 @@ def is_float(string):
 @hug.object
 class HotTub:
     def __init__(self):
+        self.running = True
         self.current_temp = 0
         self.goal_temp = DEFAULT_GOAL_TEMP
 
@@ -92,18 +94,24 @@ class HotTub:
     def manage_temp(self):
         while self.running:
             if self.current_temp < self.goal_temp <= MAXIMUM_TEMP:
-                if not self.heater_active:
-                    self.heater_relay.on()
+                self.heater_relay.on()
             else:
-                if self.heater_active:
-                    self.heater_relay.off()
+                self.heater_relay.off()
 
             sleep(1)
 
-    def stop(self):
+    def stop(self, signum, frame):
         self.running = False
+
+        # Join threads
         self.read_temp_thread.join()
         self.manage_temp_thread.join()
 
-        sys.exit(0)
+        # Turn off relays
+        self.circulation_pump_relay.off()
+        self.jets_pump_relay.off()
+        self.heater_relay.off()
+
+        # Exit program
+        exit(0)
 
