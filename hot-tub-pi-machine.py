@@ -12,6 +12,7 @@ from gpiozero import OutputDevice
 # Global constants
 PROBE_PATH = glob('/sys/bus/w1/devices/28*/temperature')[0]
 DEFAULT_GOAL_TEMP = 90
+MAXIMUM_TEMP = 104
 
 # Add CORS middleware
 api = hug.API(__name__)
@@ -33,10 +34,18 @@ class HotTub:
         self.goal_temp = DEFAULT_GOAL_TEMP
         self.jets_active = False
         self.heater_active = False
-        self.heater = OutputDevice(17)
+
+        # Relay I/O
+        self.circulation_pump_relay = OutputDevice(17)
+        self.jets_pump_relay = OutputDevice(22)
+        self.heater_relay = OutputDevice(27)
+
+        # Circulation pump always on
+        self.circulation_pump_relay.on()
+
+        # Background threads
         self.read_temp_thread = Thread(target=self.read_temp)
         self.manage_temp_thread = Thread(target=self.manage_temp)
-
         self.read_temp_thread.start()
         self.manage_temp_thread.start()
 
@@ -63,6 +72,12 @@ class HotTub:
     @hug.object.post('/jets')
     def toggle_jets_active(self):
         self.jets_active = not self.jets_active
+
+        if self.jets_active:
+            self.jets_pump_relay.on()
+        else:
+            self.jets_pump_relay.off()
+
         return self.get_jets_active()
 
     def read_temp(self):
@@ -88,12 +103,12 @@ class HotTub:
 
     def manage_temp(self):
         while True:
-            if self.current_temp < self.goal_temp:
+            if self.current_temp < self.goal_temp <= MAXIMUM_TEMP:
                 if not self.heater_active:
                     self.toggle_heater(True)
             else:
                 if self.heater_active:
                     self.toggle_heater(False)
-            
+
             sleep(1)
 
