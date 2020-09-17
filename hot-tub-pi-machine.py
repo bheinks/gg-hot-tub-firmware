@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from signal import signal, SIGTERM
 from glob import glob
 from threading import Thread
 from time import sleep
@@ -32,8 +33,6 @@ class HotTub:
     def __init__(self):
         self.current_temp = 0
         self.goal_temp = DEFAULT_GOAL_TEMP
-        self.jets_active = False
-        self.heater_active = False
 
         # Relay I/O
         self.circulation_pump_relay = OutputDevice(17)
@@ -49,6 +48,9 @@ class HotTub:
         self.read_temp_thread.start()
         self.manage_temp_thread.start()
 
+        # Handle SIGTERM
+        signal(SIGTERM, self.stop)
+
     @hug.object.get('/temp')
     def get_current_temp(self):
         return {'result': f'{self.current_temp:.4g}'}
@@ -59,7 +61,6 @@ class HotTub:
             self.goal_temp = float(data)
         else:
             response.status = HTTP_400
-            return
 
     @hug.object.get('/goal-temp')
     def get_goal_temp(self):
@@ -67,17 +68,11 @@ class HotTub:
 
     @hug.object.get('/jets')
     def get_jets_active(self):
-        return {'result': self.jets_active}
+        return {'result': bool(self.jets_pump_relay.value)}
 
     @hug.object.post('/jets')
     def toggle_jets_active(self):
-        self.jets_active = not self.jets_active
-
-        if self.jets_active:
-            self.jets_pump_relay.on()
-        else:
-            self.jets_pump_relay.off()
-
+        self.jets_pump_relay.toggle()
         return self.get_jets_active()
 
     def read_temp(self):
@@ -85,7 +80,7 @@ class HotTub:
             return (temp * 9/5) + 32
 
         # Update temperature in loop
-        while True:
+        while self.running:
             with open(PROBE_PATH) as f:
                 raw_temp = f.read().rstrip()
 
@@ -94,21 +89,21 @@ class HotTub:
                 celsius = float('.'.join((raw_temp[:2], raw_temp[2:])))
                 self.current_temp = convert_to_fahrenheit(celsius)
 
-    def toggle_heater(self, enabled):
-        self.heater_active = enabled
-        if enabled:
-            self.heater_relay.on()
-        else:
-            self.heater_relay.off()
-
     def manage_temp(self):
-        while True:
+        while self.running:
             if self.current_temp < self.goal_temp <= MAXIMUM_TEMP:
                 if not self.heater_active:
-                    self.toggle_heater(True)
+                    self.heater_relay.on()
             else:
                 if self.heater_active:
-                    self.toggle_heater(False)
+                    self.heater_relay.off()
 
             sleep(1)
+
+    def stop(self):
+        self.running = False
+        self.read_temp_thread.join()
+        self.manage_temp_thread.join()
+
+        sys.exit(0)
 
