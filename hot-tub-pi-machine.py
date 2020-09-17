@@ -97,9 +97,9 @@ class HotTub:
     def toggle_heater(self, enabled):
         self.heater_active = enabled
         if enabled:
-            self.heater.on()
+            self.heater_relay.on()
         else:
-            self.heater.off()
+            self.heater_relay.off()
 
     def manage_temp(self):
         while True:
