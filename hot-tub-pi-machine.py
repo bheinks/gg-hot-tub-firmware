@@ -12,7 +12,11 @@ from falcon import HTTP_400
 from gpiozero import OutputDevice
 
 # Global constants
-PROBE_PATH = glob('/sys/bus/w1/devices/28*/temperature')[0]
+try:
+    PROBE_PATH = glob('/sys/bus/w1/devices/28*/temperature')[0]
+except IndexError:
+    exit('Error: Unable to open temperature probe')
+
 DEFAULT_GOAL_TEMP = 90
 MAXIMUM_TEMP = 104
 
@@ -90,6 +94,9 @@ class HotTub:
                 # Split string into float
                 celsius = float('.'.join((raw_temp[:2], raw_temp[2:])))
                 self.current_temp = convert_to_fahrenheit(celsius)
+            else:
+                # If temp can't be read, set higher than max to disable heater
+                self.current_temp = MAXIMUM_TEMP + 1
 
     def manage_temp(self):
         while self.running:
@@ -113,5 +120,5 @@ class HotTub:
         self.heater_relay.off()
 
         # Exit program
-        exit(0)
+        exit()
 
