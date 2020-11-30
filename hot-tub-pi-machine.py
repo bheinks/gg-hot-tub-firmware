@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 
 from glob import glob
+from os import getenv
 from signal import signal, SIGTERM
 from sys import exit
 from threading import Thread
 from time import sleep
 
 # Third party imports
+from dotenv import load_dotenv
 import hug
 from falcon import HTTP_400
 from gpiozero import OutputDevice
@@ -23,6 +25,12 @@ MAXIMUM_TEMP = 104
 # Add CORS middleware
 api = hug.API(__name__)
 api.http.add_middleware(hug.middleware.CORSMiddleware(api))
+
+# Set up authentication
+load_dotenv()
+USERNAME = getenv('USERNAME')
+PASSWORD = getenv('PASSWORD')
+authentication = hug.authentication.basic(hug.authentication.verify(USERNAME, PASSWORD))
 
 
 def is_float(string):
@@ -61,7 +69,7 @@ class HotTub:
     def get_current_temp(self):
         return {'result': f'{self.current_temp:.4g}'}
 
-    @hug.object.post('/temp')
+    @hug.object.post('/temp', requires=authentication)
     def set_goal_temp(self, data, response):
         if data and is_float(data):
             self.goal_temp = float(data)
@@ -76,7 +84,7 @@ class HotTub:
     def get_jets_active(self):
         return {'result': bool(self.jets_pump_relay.value)}
 
-    @hug.object.post('/jets')
+    @hug.object.post('/jets', requires=authentication)
     def toggle_jets_active(self):
         self.jets_pump_relay.toggle()
         return self.get_jets_active()
