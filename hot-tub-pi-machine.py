@@ -2,6 +2,7 @@
 
 from glob import glob
 from os import getenv
+from pathlib import Path
 from signal import signal, SIGTERM
 from sys import exit
 from threading import Thread
@@ -19,6 +20,7 @@ try:
 except IndexError:
     exit('Error: Unable to open temperature probe')
 
+STATE_PATH = Path('state')
 DEFAULT_GOAL_TEMP = 90
 MAXIMUM_TEMP = 104
 
@@ -46,7 +48,17 @@ class HotTub:
     def __init__(self):
         self.running = True
         self.current_temp = 0
-        self.goal_temp = DEFAULT_GOAL_TEMP
+
+        # Restore last set temperature from file (if exists)
+        if STATE_PATH.is_file():
+            with open(STATE_PATH) as f:
+                try:
+                    self.goal_temp = float(f.read())
+                # Set default if state file is empty
+                except ValueError:
+                    self.goal_temp = DEFAULT_GOAL_TEMP
+        else:
+            self.goal_temp = DEFAULT_GOAL_TEMP
 
         # Relay I/O
         self.circulation_pump_relay = OutputDevice(17)
@@ -73,6 +85,10 @@ class HotTub:
     def set_goal_temp(self, data, response):
         if data and is_float(data):
             self.goal_temp = float(data)
+
+            # Save temperature to file
+            with open(STATE_PATH, 'w') as f:
+                f.write(data)
         else:
             response.status = HTTP_400
 
@@ -100,7 +116,7 @@ class HotTub:
 
             if raw_temp:
                 # Split string into float
-                celsius = float('.'.join((raw_temp[:2], raw_temp[2:])))
+                celsius = float(raw_temp) / 1000
                 self.current_temp = convert_to_fahrenheit(celsius)
             else:
                 # If temp can't be read, set higher than max to disable heater
